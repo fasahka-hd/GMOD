@@ -1,0 +1,73 @@
+"srcds_addons"
+{
+	"920781858"
+	{
+		"name"		"Luftwaffe Officer"
+		"path"		"/home/container/steam_cache/content/4000/920781858/814434046762978693_legacy.bin"
+	}
+	"2509672855"
+	{
+		"name"		"License to Kiss"
+		"path"		"/home/container/steam_cache/content/4000/2509672855"
+	}
+	"3003893737"
+	{
+		"name"		"Jujutsu Kaisen ∞ Limitless Cursed Technique"
+		"path"		"/home/container/steam_cache/content/4000/3003893737"
+	}
+	"3036509178"
+	{
+		"name"		"Satoru Gojo - Fortnite [PM]"
+		"path"		"/home/container/steam_cache/content/4000/3036509178"
+	}
+	"3243285357"
+	{
+		"name"		"Jujutsu Kaisen - Yuji Itadori"
+		"path"		"/home/container/steam_cache/content/4000/3243285357"
+	}
+	"3272825616"
+	{
+		"name"		"Poco playermodel!(from brawl stars)"
+		"path"		"/home/container/steam_cache/content/4000/3272825616"
+	}
+	"3374404008"
+	{
+		"name"		"BAGGY JEANS SKELETON | Playermodel"
+		"path"		"/home/container/steam_cache/content/4000/3374404008"
+	}
+	"3680779728"
+	{
+		"name"		"ARIZONA Kanatan"
+		"path"		"/home/container/steam_cache/content/4000/3680779728"
+	}
+	"3680780748"
+	{
+		"name"		"ARIZONA Suid"
+		"path"		"/home/container/steam_cache/content/4000/3680780748"
+	}
+	"3705661667"
+	{
+		"name"		"ARIZONA Content №1"
+		"path"		"/home/container/steam_cache/content/4000/3705661667"
+	}
+	"3646019014"
+	{
+		"name"		"Arizona Weapon"
+		"path"		"/home/container/steam_cache/content/4000/3646019014"
+	}
+	"3706356504"
+	{
+		"name"		"Arizona Map V1"
+		"path"		"/home/container/steam_cache/content/4000/3706356504"
+	}
+	"2974121379"
+	{
+		"name"		"Majestic Car Dealer [DarkRP]"
+		"path"		"/home/container/steam_cache/content/4000/2974121379"
+	}
+	"3745003429"
+	{
+		"name"		"ArizonaRP Content 1"
+		"path"		"/home/container/steam_cache/content/4000/3745003429"
+	}
+}
