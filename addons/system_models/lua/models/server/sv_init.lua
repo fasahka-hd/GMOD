@@ -200,7 +200,7 @@ net.Receive('just_models_buy', function(_, ply)
 
         -- Проверка: не куплена ли уже модель
         if table.HasValue(tbl, mdl_id) then 
-            ply:ChatPrint('❌ У вас уже приобретена данная модель!') 
+            ply:ChatPrint('У вас уже приобретена данная модель!') 
             return 
         end
         
@@ -211,7 +211,7 @@ net.Receive('just_models_buy', function(_, ply)
         
         -- Проверяем, хватает ли средств
         if balance < price then
-            ply:ChatPrint('❌ Недостаточно донат монет! Ваш баланс: ' .. balance .. ' (нужно: ' .. price .. ')')
+            ply:ChatPrint('Недостаточно донат монет! Ваш баланс: ' .. balance .. ' (нужно: ' .. price .. ')')
             return
         end
         
@@ -219,17 +219,17 @@ net.Receive('just_models_buy', function(_, ply)
         local success = TakeMoneyFromIGS(ply, price, 'Покупка модели: ' .. just_models.selling[mdl_id].name)
         
         if not success then
-            ply:ChatPrint('❌ Ошибка списания средств. Сообщите администратору.')
+            ply:ChatPrint('Ошибка списания средств. Сообщите администратору.')
             print('[JustModels] ВСЕ СПОСОБЫ СПИСАНИЯ НЕ СРАБОТАЛИ для ' .. ply:Nick())
             return
         end
         
         -- Всё успешно - выдаём модель
         ply:AddModelToDB(mdl_id)
-        ply:ChatPrint('✅ Успешная покупка модели ' .. just_models.selling[mdl_id].name .. ' за ' .. price .. ' донат монет!')
+        ply:ChatPrint('Успешная покупка модели ' .. just_models.selling[mdl_id].name .. ' за ' .. price .. ' донат монет!')
         
         local newBalance = ply:IGSFunds()
-        ply:ChatPrint('💰 Ваш новый баланс: ' .. newBalance .. ' донат монет')
+        ply:ChatPrint('Ваш новый баланс: ' .. newBalance .. ' донат монет')
         
         print('[JustModels] Игрок ' .. ply:Nick() .. ' купил модель ' .. mdl_id .. ' за ' .. price)
     end)
@@ -250,6 +250,10 @@ hook.Add('PlayerSetModel', 'Change_PM', function(ply)
             return false
         end
         db:Query('SELECT * FROM `just_models` WHERE steamid = ?', ply:SteamID64(), function(data)
+            -- The web-panel model is authoritative; do not overwrite it from
+            -- this legacy addon after the asynchronous DB query completes.
+            local panelModels = VibeRP and VibeRP.PlayerModels and VibeRP.PlayerModels[ply:SteamID64()]
+            if istable(panelModels) and #panelModels > 0 then return end
             if data[1] and data[1].toggle != nil then
                 if just_models.selling[data[1].toggle] == nil then ply:ChatPrint('Произошла ошибка [Не найден ID]') return end
                 ply:SetModel(just_models.selling[data[1].toggle].model)
@@ -261,6 +265,9 @@ end)
 hook.Add('PlayerInitialSpawn', 'JM_SpawnModel', function(ply)
     if IsValid(ply) and ply:IsPlayer() then
         db:Query('SELECT * FROM `just_models` WHERE steamid = ?', ply:SteamID64(), function(data)
+            -- Keep the web-panel model authoritative when both systems exist.
+            local panelModels = VibeRP and VibeRP.PlayerModels and VibeRP.PlayerModels[ply:SteamID64()]
+            if istable(panelModels) and #panelModels > 0 then return end
             if data[1] and data[1].toggle != nil then
                 if just_models.selling[data[1].toggle] == nil then ply:ChatPrint('Произошла ошибка [Не найден ID]') return end
                 ply:SetModel(just_models.selling[data[1].toggle].model)

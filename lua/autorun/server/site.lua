@@ -112,7 +112,11 @@ local function httpGet(endpoint, params, callback, attempt)
     params = params or {}
     local url = VibeRP.Config.PanelURL .. endpoint
     local query = {}
-    for k, v in pairs(params) do table.insert(query, k .. "=" .. tostring(v)) end
+    for k, v in pairs(params) do
+        local value = tostring(v)
+        if util.URLEncode then value = util.URLEncode(value) end
+        table.insert(query, tostring(k) .. "=" .. value)
+    end
     if #query > 0 then url = url .. "?" .. table.concat(query, "&") end
     HTTP({
         url = url, method = "GET",
@@ -120,7 +124,12 @@ local function httpGet(endpoint, params, callback, attempt)
         success = function(code, body)
             if code >= 200 and code < 300 then
                 local ok, data = pcall(util.JSONToTable, body)
-                if ok and data then callback(data, code) else callback(nil, code) end
+                if ok and istable(data) then
+                    callback(data, code)
+                else
+                    errLog("HTTP GET %s returned invalid JSON (code %d)", endpoint, code)
+                    callback(nil, code)
+                end
             else
                 if attempt < VibeRP.Config.HttpRetries then timer.Simple(VibeRP.Config.HttpRetryDelay, function() httpGet(endpoint, params, callback, attempt + 1) end)
                 else errLog("HTTP GET %s failed (code %d) after %d attempts", endpoint, code, attempt); callback(nil, code) end
@@ -144,7 +153,15 @@ local function httpPost(endpoint, payload, callback, attempt)
         success = function(code, body)
             if code >= 200 and code < 300 then
                 local ok, data = pcall(util.JSONToTable, body)
-                if ok and data then if callback then callback(data, code) end else if callback then callback(nil, code) end end
+                if ok and istable(data) then
+                    if data.ok == false then
+                        errLog("HTTP POST %s returned ok=false: %s", endpoint, tostring(data.error or "unknown"))
+                    end
+                    if callback then callback(data, code) end
+                else
+                    errLog("HTTP POST %s returned invalid JSON (code %d)", endpoint, code)
+                    if callback then callback(nil, code) end
+                end
             else
                 if attempt < VibeRP.Config.HttpRetries then timer.Simple(VibeRP.Config.HttpRetryDelay, function() httpPost(endpoint, payload, callback, attempt + 1) end)
                 else errLog("HTTP POST %s failed (code %d) after %d attempts", endpoint, code, attempt); if callback then callback(nil, code) end end
@@ -197,7 +214,14 @@ local function syncOnline()
     end)
 end
 
-local function markDone(cmdId) httpPost("/api/mark", { id = cmdId }) end
+local function markDone(cmdId)
+    if not cmdId or cmdId == "" then return end
+    httpPost("/api/mark", { id = cmdId }, function(data, code)
+        if not data or not data.ok then
+            errLog("Не удалось отметить команду %s как выполненную (code=%s)", tostring(cmdId), tostring(code))
+        end
+    end)
+end
 
 local function addWebAdminToReason(reason, sid64)
     sid64 = tostring(sid64 or "")
@@ -228,35 +252,102 @@ local function addWebAdminToBACommand(text, sid64)
     return text
 end
 
+local function commandSyncResult(cmdId, label)
+    return function(ok, reason)
+        if ok then
+            markDone(cmdId)
+        else
+            errLog("Команда %s (%s) не подтверждена; она будет повторена: %s", tostring(cmdId), tostring(label), tostring(reason or "sync failed"))
+        end
+    end
+end
+
 local function execCommand(cmd)
     local text = cmd.text or ""
     local cmdId = cmd.id or ""
     if cmd.type ~= "console" or text == "" then markDone(cmdId) return end
 
     local addSid32 = string.match(text, "^addmodel%s+(%S+)%s+")
-    if addSid32 then local ply = findPlayerBySteamID32(addSid32) if IsValid(ply) then VibeRP.LoadPlayerModels(ply, true) end markDone(cmdId) return end
+    if addSid32 then
+        local ply = findPlayerBySteamID32(addSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerModels(ply, true, commandSyncResult(cmdId, "addmodel"))
+        return
+    end
     local rmSid32 = string.match(text, "^removemodel%s+(%S+)%s+")
-    if rmSid32 then local ply = findPlayerBySteamID32(rmSid32) if IsValid(ply) then VibeRP.LoadPlayerModels(ply, true) end markDone(cmdId) return end
+    if rmSid32 then
+        local ply = findPlayerBySteamID32(rmSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerModels(ply, true, commandSyncResult(cmdId, "removemodel"))
+        return
+    end
 
-    local addWepSid32 = string.match(text, "^giveweapon%s+(%S+)%s+")
-    if addWepSid32 then local ply = findPlayerBySteamID32(addWepSid32) if IsValid(ply) then VibeRP.LoadPlayerWeapons(ply, false) end markDone(cmdId) return end
-    local rmWepSid32 = string.match(text, "^removeweapon%s+(%S+)%s+")
-    if rmWepSid32 then local ply = findPlayerBySteamID32(rmWepSid32) if IsValid(ply) then VibeRP.LoadPlayerWeapons(ply, false) end markDone(cmdId) return end
+    local addWepSid32 = string.match(text, "^giveweapon%s+(%S+)%s+%S+")
+    if addWepSid32 then
+        local ply = findPlayerBySteamID32(addWepSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerWeapons(ply, true, commandSyncResult(cmdId, "giveweapon"))
+        return
+    end
+    local rmWepSid32, rmWepClass = string.match(text, "^removeweapon%s+(%S+)%s+(%S+)")
+    if rmWepSid32 then
+        local ply = findPlayerBySteamID32(rmWepSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerWeapons(ply, true, function(ok, reason)
+            if not ok then
+                commandSyncResult(cmdId, "removeweapon")(false, reason)
+                return
+            end
+            if rmWepClass and rmWepClass ~= "" and IsValid(ply) then ply:StripWeapon(rmWepClass) end
+            markDone(cmdId)
+        end)
+        return
+    end
 
-    local addJobSid32, addJobCmd = string.match(text, "^givejob%s+(%S+)%s+(%S+)")
-    if addJobSid32 then local ply = findPlayerBySteamID32(addJobSid32) if IsValid(ply) then VibeRP.LoadPlayerJobs(ply) end markDone(cmdId) return end
+    local addJobSid32 = string.match(text, "^givejob%s+(%S+)%s+(%S+)")
+    if addJobSid32 then
+        local ply = findPlayerBySteamID32(addJobSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerJobs(ply, commandSyncResult(cmdId, "givejob"))
+        return
+    end
     local rmJobSid32 = string.match(text, "^removejob%s+(%S+)%s+")
-    if rmJobSid32 then local ply = findPlayerBySteamID32(rmJobSid32) if IsValid(ply) then VibeRP.LoadPlayerJobs(ply) end markDone(cmdId) return end
+    if rmJobSid32 then
+        local ply = findPlayerBySteamID32(rmJobSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerJobs(ply, commandSyncResult(cmdId, "removejob"))
+        return
+    end
 
     local addQmenuSid32, addQmenuType = string.match(text, "^giveqmenu%s+(%S+)%s+(%S+)")
-    if addQmenuSid32 then local ply = findPlayerBySteamID32(addQmenuSid32) if IsValid(ply) then VibeRP.LoadPlayerQmenu(ply, true, addQmenuType) end markDone(cmdId) return end
+    if addQmenuSid32 then
+        local ply = findPlayerBySteamID32(addQmenuSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerQmenu(ply, true, addQmenuType, commandSyncResult(cmdId, "giveqmenu"))
+        return
+    end
     local rmQmenuSid32, rmQmenuType = string.match(text, "^removeqmenu%s+(%S+)%s+(%S+)")
-    if rmQmenuSid32 then local ply = findPlayerBySteamID32(rmQmenuSid32) if IsValid(ply) then VibeRP.LoadPlayerQmenu(ply) end markDone(cmdId) return end
+    if rmQmenuSid32 then
+        local ply = findPlayerBySteamID32(rmQmenuSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerQmenu(ply, false, nil, commandSyncResult(cmdId, "removeqmenu"))
+        return
+    end
 
     local panelPropsSid32 = string.match(text, "^panel_setprops%s+(%S+)%s+")
-    if panelPropsSid32 then local ply = findPlayerBySteamID32(panelPropsSid32) if IsValid(ply) then VibeRP.LoadPlayerAccess(ply) end markDone(cmdId) return end
+    if panelPropsSid32 then
+        local ply = findPlayerBySteamID32(panelPropsSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerAccess(ply, commandSyncResult(cmdId, "panel_setprops"))
+        return
+    end
     local panelSmSid32 = string.match(text, "^panel_setmodelaccess%s+(%S+)%s+")
-    if panelSmSid32 then local ply = findPlayerBySteamID32(panelSmSid32) if IsValid(ply) then VibeRP.LoadPlayerAccess(ply) end markDone(cmdId) return end
+    if panelSmSid32 then
+        local ply = findPlayerBySteamID32(panelSmSid32)
+        if not IsValid(ply) then markDone(cmdId) return end
+        VibeRP.LoadPlayerAccess(ply, commandSyncResult(cmdId, "panel_setmodelaccess"))
+        return
+    end
 
     local webAdminSid64 = tostring(cmd.admin_steamid64 or cmd.admin_sid64 or "")
     if webAdminSid64 ~= "" then
@@ -278,6 +369,10 @@ end
 local function pollCommands()
     httpGet("/api/get", { password = VibeRP.Config.Secret }, function(data)
         if not data or not istable(data) then return end
+        if data.ok == false then
+            errLog("/api/get вернул ошибку: %s", tostring(data.error or "unknown"))
+            return
+        end
         for _, cmd in ipairs(data) do if istable(cmd) and cmd.id then execCommand(cmd) end end
     end)
 end
@@ -317,53 +412,87 @@ local function givePlayerWeapons(ply)
     for _, w in ipairs(weapons) do if w.weapon_class and w.weapon_class ~= "" then ply:Give(w.weapon_class) end end
 end
 
-function VibeRP.LoadPlayerModels(ply, applyAfter)
-    if not IsValid(ply) or ply:IsBot() then return end
-    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then return end
+function VibeRP.LoadPlayerModels(ply, applyAfter, callback)
+    if not IsValid(ply) or ply:IsBot() then if callback then callback(false, "player unavailable") end return end
+    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then if callback then callback(false, "steamid unavailable") end return end
     httpGet("/api/models_sync", { action = "list_player_models", steamid32 = sid32, password = VibeRP.Config.Secret }, function(data)
-        if not data or not data.ok or not IsValid(ply) then return end
+        if not data then if callback then callback(false, "no response") end return end
+        if not data.ok then
+            errLog("models_sync rejected request: %s", tostring(data.error or "unknown"))
+            if callback then callback(false, data.error or "sync rejected") end
+            return
+        end
+        if not IsValid(ply) then if callback then callback(false, "player disconnected") end return end
         VibeRP.PlayerModels[ply:SteamID64()] = data.items or {}
         if applyAfter then applyPlayerModel(ply) end
+        if callback then callback(true) end
     end)
 end
 
-function VibeRP.LoadPlayerWeapons(ply, giveAfter)
-    if not IsValid(ply) or ply:IsBot() then return end
-    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then return end
+function VibeRP.LoadPlayerWeapons(ply, giveAfter, callback)
+    if not IsValid(ply) or ply:IsBot() then if callback then callback(false, "player unavailable") end return end
+    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then if callback then callback(false, "steamid unavailable") end return end
     httpGet("/api/weapons_sync", { action = "list_player_weapons", steamid32 = sid32, password = VibeRP.Config.Secret }, function(data)
-        if not data or not data.ok or not IsValid(ply) then return end
+        if not data then if callback then callback(false, "no response") end return end
+        if not data.ok then
+            errLog("weapons_sync rejected request: %s", tostring(data.error or "unknown"))
+            if callback then callback(false, data.error or "sync rejected") end
+            return
+        end
+        if not IsValid(ply) then if callback then callback(false, "player disconnected") end return end
         VibeRP.PlayerWeapons[ply:SteamID64()] = data.items or {}
         if giveAfter then givePlayerWeapons(ply) end
+        if callback then callback(true) end
     end)
 end
 
-function VibeRP.LoadPlayerJobs(ply)
-    if not IsValid(ply) or ply:IsBot() then return end
-    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then return end
+function VibeRP.LoadPlayerJobs(ply, callback)
+    if not IsValid(ply) or ply:IsBot() then if callback then callback(false, "player unavailable") end return end
+    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then if callback then callback(false, "steamid unavailable") end return end
     httpGet("/api/jobs_sync", { action = "list_player_jobs", steamid32 = sid32, password = VibeRP.Config.Secret }, function(data)
-        if not data or not data.ok or not IsValid(ply) then return end
+        if not data then if callback then callback(false, "no response") end return end
+        if not data.ok then
+            errLog("jobs_sync rejected request: %s", tostring(data.error or "unknown"))
+            if callback then callback(false, data.error or "sync rejected") end
+            return
+        end
+        if not IsValid(ply) then if callback then callback(false, "player disconnected") end return end
         VibeRP.PlayerJobs[ply:SteamID64()] = data.items or {}
+        if callback then callback(true) end
     end)
 end
 
 util.AddNetworkString("VibeRP_QmenuNotify")
 
-function VibeRP.LoadPlayerAccess(ply)
-    if not IsValid(ply) or ply:IsBot() then return end
-    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then return end
+function VibeRP.LoadPlayerAccess(ply, callback)
+    if not IsValid(ply) or ply:IsBot() then if callback then callback(false, "player unavailable") end return end
+    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then if callback then callback(false, "steamid unavailable") end return end
     httpGet("/api/player_access_sync", { action = "get", steamid32 = sid32, password = VibeRP.Config.Secret }, function(data)
-        if not data or not data.ok or not IsValid(ply) then return end
+        if not data then if callback then callback(false, "no response") end return end
+        if not data.ok then
+            errLog("player_access_sync rejected request: %s", tostring(data.error or "unknown"))
+            if callback then callback(false, data.error or "sync rejected") end
+            return
+        end
+        if not IsValid(ply) then if callback then callback(false, "player disconnected") end return end
         local item = data.item or {}
         ply.PanelExtraProps = math.max(0, tonumber(item.props_extra) or 0)
         ply.PanelSetModelAccess = (tonumber(item.setmodel) or 0) == 1
+        if callback then callback(true) end
     end)
 end
 
-function VibeRP.LoadPlayerQmenu(ply, isNewGrant, grantedType)
-    if not IsValid(ply) or ply:IsBot() then return end
-    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then return end
+function VibeRP.LoadPlayerQmenu(ply, isNewGrant, grantedType, callback)
+    if not IsValid(ply) or ply:IsBot() then if callback then callback(false, "player unavailable") end return end
+    local sid32 = ply:SteamID() if not sid32 or sid32 == "" then if callback then callback(false, "steamid unavailable") end return end
     httpGet("/api/qmenu_sync", { action = "list_player_qmenu", steamid32 = sid32, password = VibeRP.Config.Secret }, function(data)
-        if not data or not data.ok or not IsValid(ply) then return end
+        if not data then if callback then callback(false, "no response") end return end
+        if not data.ok then
+            errLog("qmenu_sync rejected request: %s", tostring(data.error or "unknown"))
+            if callback then callback(false, data.error or "sync rejected") end
+            return
+        end
+        if not IsValid(ply) then if callback then callback(false, "player disconnected") end return end
 
         local hasQmenu = false
         local hasQmenuPlus = false
@@ -389,6 +518,7 @@ function VibeRP.LoadPlayerQmenu(ply, isNewGrant, grantedType)
             end
             net.Send(ply)
         end
+        if callback then callback(true) end
     end)
 end
 
@@ -649,14 +779,18 @@ concommand.Add("giveweapon", function(ply, cmd, args, argStr)
     local sid32 = string.match(argStr or "", "(%S+)%s+")
     if not sid32 then return end
     local target = findPlayerBySteamID32(sid32) or findPlayer(sid32)
-    if IsValid(target) then VibeRP.LoadPlayerWeapons(target, false) end
+    if IsValid(target) then VibeRP.LoadPlayerWeapons(target, true) end
 end)
 concommand.Add("removeweapon", function(ply, cmd, args, argStr)
     if IsValid(ply) and not ply:IsSuperAdmin() then return end
-    local sid32 = string.match(argStr or "", "(%S+)%s+")
+    local sid32, weaponClass = string.match(argStr or "", "(%S+)%s+(%S+)")
     if not sid32 then return end
     local target = findPlayerBySteamID32(sid32) or findPlayer(sid32)
-    if IsValid(target) then VibeRP.LoadPlayerWeapons(target, false) end
+    if IsValid(target) then
+        VibeRP.LoadPlayerWeapons(target, true, function(ok)
+            if ok and weaponClass and weaponClass ~= "" and IsValid(target) then target:StripWeapon(weaponClass) end
+        end)
+    end
 end)
 concommand.Add("givejob", function(ply, cmd, args, argStr)
     if IsValid(ply) and not ply:IsSuperAdmin() then return end
