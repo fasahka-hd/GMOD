@@ -1,5 +1,6 @@
 local function OpenF4Menu()
     if IsValid(fr) then fr:Remove() end
+    F4InvalidateBlur()
     local p = LocalPlayer()
     navBtns = {}
     timer.Simple(0.2, function()

@@ -102,28 +102,17 @@ function BuildShop(parent, p, categories)
             item:SetText('')
             item.Paint = function(self,w,h) draw.RoundedBox(s(12),0,0,w,h,self:IsHovered() and C.card_h or C.card) end
 
-            if ent.model then
-                local mp = item:Add('DModelPanel')
-                mp:Dock(FILL)
-                mp:DockMargin(s(6),s(6),s(6),s(6))
-                mp:SetModel(ent.model)
-                mp:SetMouseInputEnabled(false)
-                mp:SetCursor('arrow')
-
-                local te = ClientsideModel('models/error.mdl')
-                te:SetModel(ent.model); te:SetNoDraw(true)
-                local cen = te:OBBCenter()
-                local dist = te:BoundingRadius()*1.5
-                mp:SetLookAt(cen)
-                mp:SetCamPos(cen+Vector(dist,dist,0))
-                mp.LayoutEntity = function() end
-                te:Remove()
-
-                local tax = (mayor_system and mayor_system.calculate_tax) and mayor_system:calculate_tax(1,ent.price) or 0
-                mp.PaintOver = function(_,w,h)
-                    draw.SimpleText(rp.FormatMoney(ent.price+tax),'MKfont.15',s(4),h-s(40),C.green,0,0)
-                    draw.SimpleText(ent.name or '','MKfont.15',s(4),h-s(20),C.white,0,0)
-                end
+            local tax = (mayor_system and mayor_system.calculate_tax) and mayor_system:calculate_tax(1,ent.price) or 0
+            if isstring(ent.model) and ent.model ~= "" then
+                local icon = item:Add('SpawnIcon')
+                icon:Dock(FILL)
+                icon:DockMargin(s(6),s(6),s(6),s(6))
+                icon:SetModel(ent.model)
+                icon:SetMouseInputEnabled(false)
+            end
+            item.PaintOver = function(_,w,h)
+                draw.SimpleText(rp.FormatMoney(ent.price+tax),'MKfont.15',s(10),h-s(42),C.green,0,0)
+                draw.SimpleText(ent.name or '','MKfont.15',s(10),h-s(22),C.white,0,0)
             end
 
             item.DoClick = function()
@@ -208,7 +197,6 @@ function BuildJobs(parent, p)
         if not jobs then return end
 
         local first = true
-        local modelLoadDelay = 0
         for inx,v in pairs(jobs) do
             local jm = GetJobModel(inx)
             local item = grid:Add('DButton')
@@ -216,18 +204,11 @@ function BuildJobs(parent, p)
             item:SetText('')
             item.Paint = function(self,w,h) draw.RoundedBox(s(12),0,0,w,h,self:IsHovered() and C.card_h or C.card) end
 
-            local mdl = item:Add('DModelPanel')
-            mdl:SetSize(s(194),s(118))
-            mdl:SetFOV(6.4)
-            mdl:SetCamPos(Vector(310,50,45)); mdl:SetLookAt(Vector(0,0,60))
-            mdl:SetCursor('arrow'); mdl:SetMouseInputEnabled(false)
-            mdl.LayoutEntity = function() end
-
-            local loadAfter = modelLoadDelay
-            modelLoadDelay = modelLoadDelay + 0.1
-            timer.Simple(loadAfter, function()
-                if IsValid(mdl) and IsValid(item) then mdl:SetModel(jm) end
-            end)
+            local icon = item:Add('SpawnIcon')
+            icon:SetSize(s(194),s(118))
+            icon:SetPos(0,0)
+            if isstring(jm) and jm ~= "" then icon:SetModel(jm) end
+            icon:SetMouseInputEnabled(false)
 
             item.PaintOver = function(_,w,h)
                 draw.SimpleText(rp.FormatMoney(v.salary or 0)..'/час','MKfont.15',s(10),h-s(42),C.green,0,0)
@@ -343,11 +324,11 @@ function BuildModels(parent, p)
         item:SetSize(s(194),s(170)); item:SetText('')
         item.Paint = function(self,w,h) draw.RoundedBox(s(12),0,0,w,h,self:IsHovered() and C.card_h or C.card) end
 
-        local mdl = item:Add('DModelPanel')
-        mdl:SetSize(s(194),s(138)); mdl:SetModel(mp); mdl:SetFOV(6.4)
-        mdl:SetCamPos(Vector(310,50,45)); mdl:SetLookAt(Vector(0,0,60))
-        mdl:SetCursor('arrow'); mdl:SetMouseInputEnabled(false)
-        mdl.LayoutEntity = function() end
+        local icon = item:Add('SpawnIcon')
+        icon:SetSize(s(194),s(138))
+        icon:SetPos(0,0)
+        if isstring(mp) and mp ~= "" then icon:SetModel(mp) end
+        icon:SetMouseInputEnabled(false)
 
         item.PaintOver = function(_,w,h)
             draw.SimpleText('Модель #'..i,'MKfont.17',s(10),h-s(22),C.white,0,0)

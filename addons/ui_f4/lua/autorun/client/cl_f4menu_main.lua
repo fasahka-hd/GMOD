@@ -80,23 +80,32 @@ function BuildMain(parent, p)
 
     local infoTxt = infoCard:Add('Panel')
     infoTxt:Dock(FILL)
+    local infoKey, infoNmW, infoRankW = nil, 0, 0
     infoTxt.Paint = function(_,w,h)
-        draw.SimpleText('Информация об игроке','BKfont.13',0,s(2),C.gray_t,TEXT_ALIGN_LEFT,TEXT_ALIGN_TOP)
-        draw.SimpleText(p:Name(),'MKfont.18',0,s(30),C.white,TEXT_ALIGN_LEFT,TEXT_ALIGN_TOP)
+        local nm = p:Name()
         local jn = ''
         if p.GetJobName then jn=p:GetJobName()
         elseif rp.teams[p:Team()] then jn=rp.teams[p:Team()].name or '' end
-        draw.SimpleText(jn,'BKfont.14',0,s(54),C.gray_t,TEXT_ALIGN_LEFT,TEXT_ALIGN_TOP)
         local ug = p.GetUserGroup and p:GetUserGroup() or 'user'
-        if rankNames[ug] or rankNames[string.lower(tostring(ug))] then
-            local rank = LocalizeRank(ug)
+        local hasRank = rankNames[ug] or rankNames[string.lower(tostring(ug))]
+        local rank = hasRank and LocalizeRank(ug) or ''
+        local key = nm .. '|' .. rank
+        if key ~= infoKey then
+            infoKey = key
             surface.SetFont('MKfont.18')
-            local tw2 = surface.GetTextSize(p:Name())
-            surface.SetFont('MKfont.11')
-            local rw = surface.GetTextSize(rank)
-            local bx = tw2 + s(10)
-            draw.RoundedBox(s(5),bx,s(30),rw+s(16),s(20),C.card_s)
-            draw.SimpleText(rank,'MKfont.11',bx+(rw+s(16))/2,s(40),C.white,TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
+            infoNmW = surface.GetTextSize(nm)
+            if rank ~= '' then
+                surface.SetFont('MKfont.11')
+                infoRankW = surface.GetTextSize(rank)
+            end
+        end
+        draw.SimpleText('Информация об игроке','BKfont.13',0,s(2),C.gray_t,TEXT_ALIGN_LEFT,TEXT_ALIGN_TOP)
+        draw.SimpleText(nm,'MKfont.18',0,s(30),C.white,TEXT_ALIGN_LEFT,TEXT_ALIGN_TOP)
+        draw.SimpleText(jn,'BKfont.14',0,s(54),C.gray_t,TEXT_ALIGN_LEFT,TEXT_ALIGN_TOP)
+        if hasRank then
+            local bx = infoNmW + s(10)
+            draw.RoundedBox(s(5),bx,s(30),infoRankW+s(16),s(20),C.card_s)
+            draw.SimpleText(rank,'MKfont.11',bx+(infoRankW+s(16))/2,s(40),C.white,TEXT_ALIGN_CENTER,TEXT_ALIGN_CENTER)
         end
     end
 

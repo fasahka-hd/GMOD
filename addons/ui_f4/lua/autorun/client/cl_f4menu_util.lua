@@ -193,16 +193,17 @@ end
 
 local blur = Material("pp/blurscreen")
 function DrawBlur(panel, amount)
+    if not IsValid(panel) then return end
     local x, y = panel:LocalToScreen(0, 0)
     local scrW, scrH = ScrW(), ScrH()
     surface.SetDrawColor(255, 255, 255)
     surface.SetMaterial(blur)
-    for i = 1, 3 do
-        blur:SetFloat("$blur", (i / 3) * (amount or 6))
-        blur:Recompute()
-        render.UpdateScreenEffectTexture()
-        surface.DrawTexturedRect(x * -1, y * -1, scrW, scrH)
-    end
+    blur:SetFloat("$blur", amount or 6)
+    blur:Recompute()
+    render.UpdateScreenEffectTexture()
+    surface.DrawTexturedRect(x * -1, y * -1, scrW, scrH)
+end
+function F4InvalidateBlur()
 end
 
 local table_insert = table.insert
