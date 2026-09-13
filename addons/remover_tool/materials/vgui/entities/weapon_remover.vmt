@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	"$basetexture" "vgui/gmod_tool"
+	"$nolod" 1
+	"$vertexalpha" 1
+	"$vertexcolor" 1
+}

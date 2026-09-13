@@ -1,0 +1,7 @@
+"LightmappedGeneric"
+{
+	"$basetexture" "vgui/entities/guitar_stalker"
+	"$nolod" 1
+	"$vertexalpha" 1
+	"$vertexcolor" 1
+}

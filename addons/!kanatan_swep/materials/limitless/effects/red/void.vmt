@@ -1,0 +1,9 @@
+"Sprite"
+{
+	"$basetexture" "limitless/effects/red/void"
+	"$spriteorientation" "vp_parallel"
+	"$spriteorigin" "[ 0.50 0.50 ]"
+	"$nocull" "1"
+	"$vertexcolor" "1"
+
+}

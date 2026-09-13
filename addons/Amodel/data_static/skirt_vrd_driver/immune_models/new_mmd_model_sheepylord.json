@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "simple_vrd_static_immunity",
+  "generated_by": "MMD Character Importer Step 14",
+  "immune": true,
+  "reason": "This model already ships generated VRD/procedural skirt handling or was authored by the MMD Character Importer workflow.",
+  "model_paths": [
+    "models/sheepylord/Rezero_felix/New_MMD_Model.mdl",
+    "models/sheepylord/Rezero_felix/New_MMD_Model_pm.mdl",
+    "models/sheepylord/Rezero_felix/New_MMD_Model_arms.mdl"
+  ],
+  "model_prefixes": [],
+  "author": "sheepylord",
+  "character_category": "Rezero_felix",
+  "model_name": "New_MMD_Model"
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Remover Tool 🔥 [SWEP]",
+  "type": "weapon",
+  "tags": [
+    "fun",
+    "build",
+    "cartoon"
+  ],
+  "ignore": [
+    "*.db",
+    "*.res",
+    "*.tga",
+    "*.lnk"
+  ]
+}

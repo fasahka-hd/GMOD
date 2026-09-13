@@ -1,0 +1,39 @@
+--leak by matveicher
+--vk group - https://vk.com/codespill
+--steam - https://steamcommunity.com/profiles/76561198968457747/
+--ds server - https://discord.gg/7XaRzQSZ45
+--ds - matveicher
+
+CH_CryptoCurrencies.Currencies[ "mtokens" ] = {
+	Name = "mTokens",
+	
+	AddMoney = function( ply, amount )
+		mTokens.AddPlayerTokens( ply, amount )
+	end,
+	
+	TakeMoney = function( ply, amount )
+		mTokens.TakePlayerTokens( ply, amount )
+	end,
+	
+	GetMoney = function( ply )
+		return mTokens.GetPlayerTokens( ply )
+	end,
+	
+	CanAfford = function( ply, amount )
+		return mTokens.CanPlayerAfford( ply, amount )
+	end,
+	
+	FormatMoney = function( amount )
+		return string.Comma( amount ) .. " token" .. (amount > 1 and "s" or "")
+	end,
+	
+	CurrencyAbbreviation = function()
+		return "TOK"
+	end,
+}
+
+--leak by matveicher
+--vk group - https://vk.com/codespill
+--steam - https://steamcommunity.com/profiles/76561198968457747/
+--ds server - https://discord.gg/7XaRzQSZ45
+--ds - matveicher

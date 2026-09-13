@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "kind": "dynamic_model_importer_manifest",
+  "generated_by": "MMD Character Importer Step 14",
+  "manifest_id": "new_mmd_model_sheepylord",
+  "addon_id": "new_mmd_model_sheepylord",
+  "author": "sheepylord",
+  "character_category": "Rezero_felix",
+  "category_readable": "Felix Argyle",
+  "model_name": "New_MMD_Model",
+  "display_name": "New MMD Model",
+  "paths": {
+    "model": "models/sheepylord/Rezero_felix/New_MMD_Model.mdl",
+    "player_model": "models/sheepylord/Rezero_felix/New_MMD_Model_pm.mdl",
+    "arms_model": "models/sheepylord/Rezero_felix/New_MMD_Model_arms.mdl",
+    "friendly_icon": "materials/vgui/entities/New_MMD_Model_sheepylord_F.vtf",
+    "enemy_icon": "materials/vgui/entities/New_MMD_Model_sheepylord_E.vtf"
+  },
+  "npc_defaults": {
+    "relation": "friendly",
+    "health": 100,
+    "weapon": "weapon_smg1",
+    "friendly": {
+      "class": "npc_citizen",
+      "weapon": "weapon_smg1",
+      "keyvalues": {
+        "citizentype": "4"
+      }
+    },
+    "hostile": {
+      "class": "npc_combine_s",
+      "weapon": "weapon_ar2",
+      "keyvalues": {
+        "Numgrenades": "4"
+      }
+    },
+    "neutral": {
+      "class": "npc_citizen",
+      "weapon": "weapon_smg1",
+      "keyvalues": {
+        "citizentype": "4"
+      }
+    }
+  }
+}

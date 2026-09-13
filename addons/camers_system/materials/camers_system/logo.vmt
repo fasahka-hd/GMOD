@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	"$basetexture"	"camers_system/logo"
+	"$translucent"	"1"
+	"$vertexcolor"	"1"
+	"$nolod"		"1"
+}

@@ -1,0 +1,39 @@
+"UnLitTwoTexture"
+{
+	"$basetexture" 	"models/weapons/v_toolgu2/screen_bg"
+	"$model"		"1"
+
+	"$texture2"	"models/weapons/v_toolgu2/overlay_crack"
+
+	"Proxies"
+	{
+                              "AnimatedTexture" 
+                               { 
+                               "animatedTextureVar" "$basetexture"  
+                               "animatedTextureFrameNumVar" "$frame" 
+                               "animatedTextureFrameRate" "8" 
+                                }
+
+		"Sine"
+		{
+			"resultVar" "$color[0]"
+			"sineperiod" .1
+			"sinemin" .99
+			"sinemax" 1
+		}
+		"Sine"
+		{
+			"resultVar" "$color[1]"
+			"sineperiod" .1
+			"sinemin" .99
+			"sinemax" 1
+		}
+		"Sine"
+		{
+			"resultVar" "$color[2]"
+			"sineperiod" .1
+			"sinemin" .99
+			"sinemax" 1
+		}
+	}
+}

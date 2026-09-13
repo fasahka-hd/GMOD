@@ -1,0 +1,6 @@
+"UnlitGeneric"
+{
+	"$basetexture" "limitless/limitless"
+	"$translucent" 1
+	"$vertexalpha" 1
+}

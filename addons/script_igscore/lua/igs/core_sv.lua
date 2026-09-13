@@ -1,0 +1,499 @@
+if not isfunction(IGS.TransactionOrig) then
+	IGS.TransactionOrig = IGS.Transaction
+end
+IGS.Transaction = function(sid,amount,note,...)
+	file.Append('donatelog_solly.txt',tostring(sid)..' '..tostring(amount)..' '..tostring(note)..'\n')
+	return IGS.TransactionOrig(sid,amount,note,...)
+end
+local PLAYER = FindMetaTable("Player")
+function PLAYER:AddIGSFunds(amount, note, callback)
+	IGS.Transaction(self:SteamID64(),amount,note,function()
+		local newbal = self:IGSFunds() + amount
+		self:SetIGSVar("igs_balance", newbal)
+
+		if tonumber(amount) > 0 then
+			local tt = IGS.TotalTransaction(self) + amount
+			self:SetIGSVar("igs_total_transactions", tt)
+
+			self:SetIGSVar("igs_lvl", IGS.LVL.GetByCost( IGS.RealPrice(tt) ):LVL())
+		end
+
+		if IGS_MirrorPlayer then
+			IGS_MirrorPlayer(self, newbal, self.igs_score,
+				self:GetIGSVar("igs_total_transactions"),
+				self:GetIGSVar("igs_lvl"))
+		end
+
+		if callback then
+			callback(newbal)
+		end
+	end)
+end
+
+
+--[[-------------------------------------------------------------------------
+	Покупки
+---------------------------------------------------------------------------]]
+function IGS.LoadPlayerPurchases(pl,cb)
+	-- Список покупок
+	IGS.GetPlayerPurchases(pl:SteamID64(),function(dat)
+		if #dat == 0 then
+			hook.Run("IGS.PlayerPurchasesLoaded",pl)
+			pl:SetIGSVar("igs_purchases", {}) -- для хука. Ниже описано
+			return
+		end
+
+		local purchases = {} -- uid = amount
+		local networked = {} -- uid = amount (было i>id до 16.02.2022, но веб загрузка потребовала перемен)
+
+		for i = 1,#dat do
+			local uid = dat[i]["Item"]
+			purchases[uid] = (purchases[uid] or 0) + 1
+
+			if IGS.GetItemByUID(uid).networked then
+				networked[uid] = (networked[uid] or 0) + 1
+			end
+		end
+
+		-- UID = Amount Of Purchases
+		pl:SetVar("igs_purchases",purchases)
+
+		-- print("IGS.GetPlayerPurchases processed",pl)
+		IGS.nw.WaitForPlayer(pl, function()
+			-- print("IGS.nw.WaitForPlayer INSIDE",pl)
+			pl:SetIGSVar("igs_purchases", networked)
+		end)
+
+		hook.Run("IGS.PlayerPurchasesLoaded",pl,purchases)
+		if cb then cb(purchases) end
+	end)
+end
+
+function IGS.GivePurchase(pl, sItemUID)
+	local ITEM = IGS.GetItemByUID(sItemUID)
+
+	local purchases = pl:GetVar("igs_purchases",{})
+	purchases[sItemUID] = (purchases[sItemUID] or 0) + 1
+
+	pl:SetVar("igs_purchases",purchases)
+
+	if ITEM.networked then
+		local tab = pl:GetIGSVar("igs_purchases") or {}
+		tab[sItemUID] = (tab[sItemUID] or 0) + 1
+		pl:SetIGSVar("igs_purchases", tab)
+	end
+
+	ITEM:OnActivate(pl)
+	return ITEM
+end
+
+function IGS.PlayerActivateItem(pl, sItemUID, fCallback)
+	local ITEM = IGS.GetItemByUID(sItemUID)
+
+	IGS.StoreLocalPurchase(pl:SteamID64(), sItemUID, ITEM:Term(), function(iPurchID)
+		IGS.GivePurchase(pl, sItemUID)
+		hook.Run("IGS.PlayerActivatedItem", pl, ITEM, iPurchID)
+		if fCallback then fCallback(iPurchID) end
+	end)
+end
+IGS.PlayerActivatedItem = IGS.PlayerActivateItem -- #todo обратка 2020.07.16
+
+function IGS.PlayerPurchasedItem(pl, ITEM, cb)
+	local afterBuy = function(invDbID_or_iPurchID)
+		local id = invDbID_or_iPurchID
+		ITEM:Buy(pl) 
+		hook.Run("IGS.PlayerPurchasedItem", pl, ITEM, id)
+		cb(id)
+	end
+
+	if IGS.C.Inv_Enabled then
+		IGS.AddToInventory(pl, ITEM:UID(), afterBuy)
+	else
+		IGS.PlayerActivateItem(pl, ITEM:UID(), afterBuy)
+	end
+end
+
+
+--[[-------------------------------------------------------------------------
+	КУПОНЫ
+---------------------------------------------------------------------------]]
+local trans = {
+	["COUP_DOESNT_EXIST"] = "Купон не существует!",
+	["COUP_EXPIRED"]      = "Срок действия купона истек!",
+	["COUP_ACTIVATED"]    = "Купон уже активирован!",
+}
+
+-- https://trello.com/c/6Oc1DykD/312
+-- На больших серверах при раздаче купонов будет слишком много запросов к GMD,
+-- что приведет к блоку API
+local coupons_errors = setmetatable({proxy = {}},{
+	__newindex = function(self, sCoupon, sErrorCode)
+		self.proxy[sCoupon] = sErrorCode
+
+		timer.Create("IGS.CouponsCacheCleanup",60,1,function()
+			table.Empty(self.proxy)
+		end)
+	end,
+	__index = function(self, sCoupon)
+		local err_code = self.proxy[sCoupon]
+		if err_code then
+			return trans[err_code]
+		end
+	end
+})
+
+function IGS.PlayerActivateCoupon(pl, sCoupon, cb)
+	cb = cb or function() end
+
+	if coupons_errors[sCoupon] then
+		cb(false, coupons_errors[sCoupon])
+		return
+	end
+
+	IGS.GetCoupon(sCoupon,function(c,expired,used)
+		local err_code =
+			not c   and "COUP_DOESNT_EXIST" or
+			expired and "COUP_EXPIRED" or
+			used    and "COUP_ACTIVATED"
+
+		if err_code then
+			coupons_errors[sCoupon] = err_code
+			cb(false, coupons_errors[sCoupon])
+			return
+		end
+
+		IGS.DeactivateCoupon(pl:SteamID64(),sCoupon,function(affected)
+			coupons_errors[sCoupon] = "COUP_ACTIVATED"
+
+			if not affected then
+				cb(false, "Купон уже активирован. Кстати, это очень(!) редкая ошибка. Сообщите администрации, тут должна была вылезти другая")
+				return -- /\ однажды эта ошибка вылезла, когда я в цикле с клиента пытался активировать купон (https://img.qweqwe.ovh/1487848973964.png)
+			end -- в бд не изменен ни один купон
+
+			IGS.UpdatePlayerName(pl:SteamID64(),pl:Nick())
+			pl:AddIGSFunds(c.Value,"C: " .. sCoupon,function()
+				cb(true)
+			end)
+		end)
+	end)
+end
+
+
+--[[-------------------------------------------------------------------------
+	ИНВЕНТАРЬ
+---------------------------------------------------------------------------]]
+local function CreateInvStructure(pl)
+	pl.igs_inv = {
+		MAP  = {}, -- db_id, data
+		LIST = {}  -- iter,  data
+	}
+end
+
+local function insertInvData(pl,iId,sItem)
+	local d = {
+		ID     = iId,
+		Item   = sItem,
+	}
+
+	pl.igs_inv.MAP[iId] = d
+	d.listid = table.insert(pl.igs_inv.LIST,d)
+end
+
+function IGS.Inventory(pl,bMap)
+	return pl.igs_inv and pl.igs_inv[bMap and "MAP" or "LIST"]
+end
+
+local f = function() end
+
+function IGS.AddToInventory(pl,sUid,fOnFinish_)
+	IGS.StoreInventoryItem(function(inserted_id)
+		if not IGS.Inventory(pl) then
+			CreateInvStructure(pl)
+		end
+
+		insertInvData(pl,inserted_id,sUid)
+
+		if fOnFinish_ then
+			fOnFinish_(inserted_id)
+		end
+	end, pl:SteamID64(),sUid)
+end
+-- IGS.AddToInventory(AMD(),"money_5mi",PRINT)
+
+-- https://img.qweqwe.ovh/1527524052957.png
+function IGS.LoadInventory(pl,cb)
+	IGS.FetchInventory(function(d)
+		cb = cb or f
+		if #d == 0 then cb() return end
+
+		CreateInvStructure(pl)
+
+		for _,v in ipairs(d) do
+			insertInvData(pl,v.ID,v.Item)
+		end
+
+		cb(pl.igs_inv)
+	end, pl:SteamID64())
+end
+-- IGS.LoadInventory(AMD(),prt)
+
+local function GetPlayerInventoryItemLocally(pl, invDbID)
+	local inv_map  = IGS.Inventory(pl,"map")
+	local inv_list = IGS.Inventory(pl)
+
+	if (not inv_map) then return false end
+
+	local t = inv_map[invDbID]
+	if (not t) then return false end 
+
+	function t:Delete()
+		assert(inv_map[invDbID],"Итем #" .. invDbID .. " не существует (уже удален?)")
+
+		inv_map[invDbID] = nil
+		table.remove(inv_list, t.listid)
+
+		for i = t.listid,#inv_list do
+			inv_list[i].listid = i
+		end
+	end
+
+	return t
+end
+
+function IGS.DeletePlayerInventoryItemLocally(pl, invDbID)
+	local t = GetPlayerInventoryItemLocally(pl, invDbID)
+	if (not t) then return false end
+
+	t:Delete()
+
+	return t
+end
+
+function IGS.PlayerEjectItem(cb, pl, invDbID)
+	cb = cb or f
+
+	local tRemoved = IGS.DeletePlayerInventoryItemLocally(pl, invDbID)
+	if (not tRemoved) then 
+		cb(false)
+		return
+	end
+
+	IGS.DeleteInventoryItem(function(ok)
+		if (not ok) then 
+			return cb(false)
+		end
+
+		local pos = LocalToWorld( Vector(50,0,35),Angle(0,0,0), pl:GetPos(),pl:GetAngles() )
+		local ent = IGS.CreateGift(tRemoved.Item, pl, pos)
+
+		cb(ent)
+	end, invDbID)
+end
+
+function IGS.IsInventoryOverloaded(pl)
+	return #(IGS.Inventory(pl) or {}) >= 100
+end
+--[[-------------------------------------------------------------------------
+	//ИНВЕНТАРЬ
+---------------------------------------------------------------------------]]
+
+hook.Add("IGS.CanPlayerBuyItem", "cant_buy_any_except_until", function(pl, ITEM)
+	if ITEM:GetMeta('donate') == true then
+
+	  	if pl:GetNWInt( "totalrecharge" ) < 50 then
+	  		return false, 'Вам необходимо пополнить донат счёт минимум на 50 рублей! Осталось пополнить: ' .. (50-pl:GetNWInt( "totalrecharge" )) .. ' руб!'
+	  	end
+
+	end
+
+	if ITEM:GetMeta('subscribe') == true then
+
+	  	if pl:GetNWInt( "totalrecharge" ) < 100 then
+	  		return false, 'Вам необходимо пополнить донат счёт минимум на 100 рублей! Осталось пополнить: ' .. (100-pl:GetNWInt( "totalrecharge" )) .. ' руб!'
+	  	end
+
+	end
+
+	if ITEM:GetMeta('donatejob') == true then
+
+	  	if pl:GetNWInt( "totalrecharge" ) < 300 then
+	  		return false, 'Вам необходимо пополнить донат счёт минимум на 300 рублей! Осталось пополнить: ' .. (300-pl:GetNWInt( "totalrecharge" )) .. ' руб!'
+	  	end
+
+	end
+
+end)
+
+hook.Add("IGS.CanPlayerActivateItem", "cant_activate_any_except_until", function(pl, ITEM, InvID)
+	if ITEM:GetMeta('donate') == true then
+
+	  	if pl:GetNWInt( "totalrecharge" ) < 50 then
+	  		return false, 'Вам необходимо пополнить донат счёт минимум на 50 рублей! Осталось пополнить: ' .. (50-pl:GetNWInt( "totalrecharge" )) .. ' руб!'
+	  	end
+
+	end
+
+	if ITEM:GetMeta('subscribe') == true then
+
+	  	if pl:GetNWInt( "totalrecharge" ) < 100 then
+	  		return false, 'Вам необходимо пополнить донат счёт минимум на 100 рублей! Осталось пополнить: ' .. (100-pl:GetNWInt( "totalrecharge" )) .. ' руб!'
+	  	end
+
+	end
+
+	if ITEM:GetMeta('donatejob') == true then
+
+	  	if pl:GetNWInt( "totalrecharge" ) < 300 then
+	  		return false, 'Вам необходимо пополнить донат счёт минимум на 300 рублей! Осталось пополнить: ' .. (300-pl:GetNWInt( "totalrecharge" )) .. ' руб!'
+	  	end
+
+	end
+end)
+
+
+-- local note = "x2 к пополнению"
+
+-- hook.Add( "IGS.IncomingMessage", "IGS Bonus X2", function( d, method )
+--     if method ~= "payment.UpdateStatus" or d.method ~= "pay" then return end
+--     local targ = player.GetBySteamID64( d.SteamID64 )
+--     local amount = IGS.RealPrice( d.orderSum )
+
+--     if targ then
+-- 		if targ:GetNWBool('CanX4') then
+-- 	        targ:AddIGSFunds( amount*3, "x4 к пополнению", function( )
+-- 	            if !IsValid( targ ) then return end
+-- 	            IGS.Notify( targ, "Задействован бонус 'x4 к пополнению'!" )
+-- 	            file.Delete( "x4donates/"..targ:SteamID64()..".txt" )
+-- 	            targ:SetNWBool('CanX4', false)
+-- 	        end )
+--     	elseif targ:GetNWBool('CanX3') then
+-- 	        targ:AddIGSFunds( amount*2, "x3 к пополнению", function( )
+-- 	            if !IsValid( targ ) then return end
+-- 	            IGS.Notify( targ, "Задействован бонус 'x3 к пополнению'!" )
+-- 	            file.Delete( "x3donates/"..targ:SteamID64()..".txt" )
+-- 	        end )
+-- 	    else
+-- 	        targ:AddIGSFunds( amount, note, function( )
+-- 	            if !IsValid( targ ) then return end
+-- 	            IGS.Notify( targ, "Задействован бонус '" .. note .. "'!" )
+-- 	        end )
+-- 	    end
+--     else
+--        	if file.Find( "x4donates/"..d.SteamID64..".txt", "DATA" )[1] then
+--         	IGS.Transaction( d.SteamID64, amount*3, "x4 к пополнению" )
+--         	file.Delete( "x4donates/"..d.SteamID64..".txt" )
+--     	elseif file.Find( "x3donates/"..d.SteamID64..".txt", "DATA" )[1] then
+--         	IGS.Transaction( d.SteamID64, amount*2, "x3 к пополнению" )
+--         	file.Delete( "x3donates/"..d.SteamID64..".txt" )
+--         else
+--         	IGS.Transaction( d.SteamID64, amount, note )
+--         end
+--     end
+-- end )
+
+
+--[[
+local note = "x2 к пополнению"
+
+hook.Add( "IGS.IncomingMessage", "IGS Bonus X2", function( d, method )
+    if method ~= "payment.UpdateStatus" or d.method ~= "pay" then return end
+    local targ = player.GetBySteamID64( d.SteamID64 )
+    local amount = IGS.RealPrice( d.orderSum )
+
+    if targ then
+    	if file.Find( "x3donates/"..targ:SteamID64()..".txt", "DATA" )[1] then
+	        targ:AddIGSFunds( amount*2, "x3 к пополнению", function( )
+	            if !IsValid( targ ) then return end
+	            IGS.Notify( targ, "Задействован бонус 'x3 к пополнению'!" )
+	            file.Delete( "x3donates/"..targ:SteamID64()..".txt" )
+	        end )
+	    else
+	        targ:AddIGSFunds( amount, note, function( )
+	            if !IsValid( targ ) then return end
+	            IGS.Notify( targ, "Задействован бонус '" .. note .. "'!" )
+	        end )
+	    end
+    else
+    	if file.Find( "x3donates/"..d.SteamID64..".txt", "DATA" )[1] then
+        	IGS.Transaction( d.SteamID64, amount*2, "x3 к пополнению" )
+        	file.Delete( "x3donates/"..d.SteamID64..".txt" )
+        else
+        	IGS.Transaction( d.SteamID64, amount, note )
+        end
+    end
+end )
+--]]
+
+
+
+-- local note = "x5 к пополнению"
+-- hook.Add( "IGS.IncomingMessage", "IGS x5", function( d, method )
+--     if method ~= "payment.UpdateStatus" or d.method ~= "pay" then return end
+--     local targ = player.GetBySteamID64( d.SteamID64 )
+--     local amount = IGS.RealPrice( d.orderSum )*4
+
+--     if targ then
+--         targ:AddIGSFunds( amount, note, function( )
+--             if !IsValid( targ ) then return end
+--             IGS.Notify( targ, "Задействован бонус '" .. note .. "'!" )
+--         end )
+--     else
+--         IGS.Transaction( d.SteamID64, amount, note )
+--     end
+-- end )
+
+
+
+-- local note = "x4 к пополнению"
+-- hook.Add( "IGS.IncomingMessage", "IGS x4", function( d, method )
+--     if method ~= "payment.UpdateStatus" or d.method ~= "pay" then return end
+--     local targ = player.GetBySteamID64( d.SteamID64 )
+--     local amount = IGS.RealPrice( d.orderSum )*3
+
+--     if targ then
+--         targ:AddIGSFunds( amount, note, function( )
+--             if !IsValid( targ ) then return end
+--             IGS.Notify( targ, "Задействован бонус '" .. note .. "'!" )
+--         end )
+--     else
+--         IGS.Transaction( d.SteamID64, amount, note )
+--     end
+-- end )
+
+
+
+-- local note = "x3 к пополнению"
+-- hook.Add( "IGS.IncomingMessage", "IGS x3", function( d, method )
+--     if method ~= "payment.UpdateStatus" or d.method ~= "pay" then return end
+--     local targ = player.GetBySteamID64( d.SteamID64 )
+--     local amount = IGS.RealPrice( d.orderSum )*2
+
+--     if targ then
+--         targ:AddIGSFunds( amount, note, function( )
+--             if !IsValid( targ ) then return end
+--             IGS.Notify( targ, "Задействован бонус '" .. note .. "'!" )
+--         end )
+--     else
+--         IGS.Transaction( d.SteamID64, amount, note )
+--     end
+-- end )
+
+
+
+local note = "x3 к пополнению"
+hook.Add( "IGS.IncomingMessage", "IGS x3", function( d, method )
+    if method ~= "payment.UpdateStatus" or d.method ~= "pay" then return end
+    local targ = player.GetBySteamID64( d.SteamID64 )
+    local amount = IGS.RealPrice( d.orderSum )*2
+    local realamount = IGS.RealPrice( d.orderSum )
+
+    if targ then
+        targ:AddIGSFunds( amount, note, function( )
+            if !IsValid( targ ) then return end
+            IGS.Notify( targ, "Задействован бонус '" .. note .. "'!" )
+        end )
+    else
+        IGS.Transaction( d.SteamID64, amount, note )
+        file.Write( "donates/"..d.SteamID64..".txt", realamount )
+    end
+end )

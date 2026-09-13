@@ -1,0 +1,4 @@
+name = "Нож Frik"
+author = "Frikadelka"
+description = "Нож с кастомными звуками"
+version = "1.0"

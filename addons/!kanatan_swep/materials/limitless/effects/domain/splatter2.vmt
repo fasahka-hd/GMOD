@@ -1,0 +1,9 @@
+"Sprite"
+{
+	"$basetexture" "limitless/effects/domain/splatter2"
+	"$spriteorientation" "vp_parallel"
+	"$spriteorigin" "[ 0.50 0.50 ]"
+	"$nocull" "1"
+	"$vertexcolor" "1"
+
+}

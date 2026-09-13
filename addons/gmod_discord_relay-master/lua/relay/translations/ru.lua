@@ -1,0 +1,15 @@
+DiscordString = {
+    ["nobody"]         = "Пусто",
+    ["connect"]        = "**Подключиться**",
+    ["currentMap"]     = "**Текущая карта**",
+    ["currentMapAlt"]  = "Карта",
+    ["players"]        = "**Игроков**",
+    ["playerList"]     = "📋 Список игроков",
+    ["mentioned"]      = "упомянул",
+    ["connecting"]     = " подключается...",
+    ["connected"]      = " зашёл на сервер",
+    ["disconnected"]   = " вышел с сервера",
+    ["disconnectReason"] = "Причина",
+    ["serverStarted"]  = "Сервер запущен!",
+    ["serverShutdown"] = "Сервер выключился",
+}
